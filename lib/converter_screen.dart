@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -15,26 +16,73 @@ class _ConverterScreenState extends State<ConverterScreen> {
   final TextEditingController _totalAmountController = TextEditingController();
   final TextEditingController _amountGivenController = TextEditingController();
 
-  /// true = EUR, false = BGN
-  bool _isEurSelected = true;
+  /// Main working currency: true = EUR, false = BGN
+  bool _mainCurrencyIsEur = true;
+
+  /// Override flags: null = use main currency, true = EUR, false = BGN
+  bool? _totalAmountCurrencyOverride;
+  bool? _amountGivenCurrencyOverride;
+
+  Timer? _debounceTimer;
 
   @override
   void initState() {
     super.initState();
-    _totalAmountController.addListener(_updateCalculations);
-    _amountGivenController.addListener(_updateCalculations);
+    _totalAmountController.addListener(_debouncedUpdate);
+    _amountGivenController.addListener(_debouncedUpdate);
   }
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
+    _totalAmountController.removeListener(_debouncedUpdate);
+    _amountGivenController.removeListener(_debouncedUpdate);
     _totalAmountController.dispose();
     _amountGivenController.dispose();
     super.dispose();
   }
 
-  void _updateCalculations() {
-    setState(() {});
+  void _debouncedUpdate() {
+    // Cancel any pending update
+    _debounceTimer?.cancel();
+    // Only rebuild after user stops typing for 400ms
+    _debounceTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
+
+  /// Checks if there are any values to clear
+  bool _hasValuesToClear() {
+    final hasText =
+        _totalAmountController.text.isNotEmpty ||
+        _amountGivenController.text.isNotEmpty;
+    final hasOverrides =
+        _totalAmountCurrencyOverride != null ||
+        _amountGivenCurrencyOverride != null;
+    final isNotDefaultCurrency = !_mainCurrencyIsEur;
+    return hasText || hasOverrides || isNotDefaultCurrency;
+  }
+
+  /// Resets all fields to their default values
+  void _resetAllFields() {
+    _totalAmountController.clear();
+    _amountGivenController.clear();
+    setState(() {
+      _mainCurrencyIsEur = true;
+      _totalAmountCurrencyOverride = null;
+      _amountGivenCurrencyOverride = null;
+    });
+  }
+
+  /// Gets the effective currency for total amount field
+  bool _getTotalAmountCurrency() =>
+      _totalAmountCurrencyOverride ?? _mainCurrencyIsEur;
+
+  /// Gets the effective currency for amount given field
+  bool _getAmountGivenCurrency() =>
+      _amountGivenCurrencyOverride ?? _mainCurrencyIsEur;
 
   /// Converts EUR to BGN
   double _convertEurToBgn(double eur) => eur * _exchangeRate;
@@ -49,21 +97,18 @@ class _ConverterScreenState extends State<ConverterScreen> {
     return parsed;
   }
 
-  /// Formats a number to 2 decimal places for currency display
-  String _formatCurrency(double? value) {
-    if (value == null) return '0.00';
-    return value.toStringAsFixed(2);
-  }
-
   @override
   Widget build(BuildContext context) {
     final totalAmount = _parseAmount(_totalAmountController.text);
     final amountGiven = _parseAmount(_amountGivenController.text);
 
+    final totalAmountCurrencyIsEur = _getTotalAmountCurrency();
+    final amountGivenCurrencyIsEur = _getAmountGivenCurrency();
+
     // Calculate total amount in other currency
     double? totalInOtherCurrency;
     if (totalAmount != null) {
-      if (_isEurSelected) {
+      if (totalAmountCurrencyIsEur) {
         totalInOtherCurrency = _convertEurToBgn(totalAmount);
       } else {
         totalInOtherCurrency = _convertBgnToEur(totalAmount);
@@ -71,19 +116,46 @@ class _ConverterScreenState extends State<ConverterScreen> {
     }
 
     // Calculate change
-    double? changeInSelectedCurrency;
-    double? changeInOtherCurrency;
+    // First, convert both to the same currency (use total amount currency)
+    double? changeInEur;
+    double? changeInBgn;
     if (totalAmount != null && amountGiven != null) {
-      changeInSelectedCurrency = amountGiven - totalAmount;
-      if (_isEurSelected) {
-        changeInOtherCurrency = _convertEurToBgn(changeInSelectedCurrency);
+      double totalAmountInEur;
+      double amountGivenInEur;
+
+      // Convert total amount to EUR
+      if (totalAmountCurrencyIsEur) {
+        totalAmountInEur = totalAmount;
       } else {
-        changeInOtherCurrency = _convertBgnToEur(changeInSelectedCurrency);
+        totalAmountInEur = _convertBgnToEur(totalAmount);
       }
+
+      // Convert amount given to EUR
+      if (amountGivenCurrencyIsEur) {
+        amountGivenInEur = amountGiven;
+      } else {
+        amountGivenInEur = _convertBgnToEur(amountGiven);
+      }
+
+      // Calculate change in EUR
+      changeInEur = amountGivenInEur - totalAmountInEur;
+
+      // Convert change to BGN
+      changeInBgn = _convertEurToBgn(changeInEur);
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('EUR-BGN Converter'), centerTitle: true),
+      appBar: AppBar(
+        title: const Text('EUR-BGN Converter'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.clear_all),
+            tooltip: 'Clear all fields',
+            onPressed: _hasValuesToClear() ? _resetAllFields : null,
+          ),
+        ],
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
@@ -101,36 +173,47 @@ class _ConverterScreenState extends State<ConverterScreen> {
                         'Working Currency',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
+                      Text(
+                        '1.95583 BGN/EUR',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
                       Row(
                         children: [
                           Text(
-                            'EUR',
+                            'BGN',
                             style: TextStyle(
-                              color: _isEurSelected
+                              color: !_mainCurrencyIsEur
                                   ? Theme.of(context).colorScheme.primary
                                   : Theme.of(context).colorScheme.onSurface
                                         .withValues(alpha: 0.5),
-                              fontWeight: _isEurSelected
+                              fontWeight: !_mainCurrencyIsEur
                                   ? FontWeight.bold
                                   : FontWeight.normal,
                             ),
                           ),
                           Switch(
-                            value: _isEurSelected,
+                            value: _mainCurrencyIsEur,
                             onChanged: (value) {
                               setState(() {
-                                _isEurSelected = value;
+                                _mainCurrencyIsEur = value;
+                                // Reset overrides if they match the new main currency (no override needed)
+                                if (_totalAmountCurrencyOverride == value) {
+                                  _totalAmountCurrencyOverride = null;
+                                }
+                                if (_amountGivenCurrencyOverride == value) {
+                                  _amountGivenCurrencyOverride = null;
+                                }
                               });
                             },
                           ),
                           Text(
-                            'BGN',
+                            'EUR',
                             style: TextStyle(
-                              color: !_isEurSelected
+                              color: _mainCurrencyIsEur
                                   ? Theme.of(context).colorScheme.primary
                                   : Theme.of(context).colorScheme.onSurface
                                         .withValues(alpha: 0.5),
-                              fontWeight: !_isEurSelected
+                              fontWeight: _mainCurrencyIsEur
                                   ? FontWeight.bold
                                   : FontWeight.normal,
                             ),
@@ -150,9 +233,52 @@ class _ConverterScreenState extends State<ConverterScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Total Amount',
-                        style: Theme.of(context).textTheme.titleMedium,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Total Amount',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          Row(
+                            children: [
+                              Text(
+                                'BGN',
+                                style: TextStyle(
+                                  color: !_getTotalAmountCurrency()
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(context).colorScheme.onSurface
+                                            .withValues(alpha: 0.5),
+                                  fontWeight: !_getTotalAmountCurrency()
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              Switch(
+                                value: _getTotalAmountCurrency(),
+                                onChanged: (value) {
+                                  setState(() {
+                                    _totalAmountCurrencyOverride = value;
+                                  });
+                                },
+                              ),
+                              Text(
+                                'EUR',
+                                style: TextStyle(
+                                  color: _getTotalAmountCurrency()
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(context).colorScheme.onSurface
+                                            .withValues(alpha: 0.5),
+                                  fontWeight: _getTotalAmountCurrency()
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8.0),
                       TextField(
@@ -167,7 +293,7 @@ class _ConverterScreenState extends State<ConverterScreen> {
                         ],
                         decoration: InputDecoration(
                           hintText: 'Enter total amount',
-                          suffixText: _isEurSelected ? 'EUR' : 'BGN',
+                          suffixText: _getTotalAmountCurrency() ? 'EUR' : 'BGN',
                           border: const OutlineInputBorder(),
                         ),
                       ),
@@ -184,9 +310,52 @@ class _ConverterScreenState extends State<ConverterScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Amount Given',
-                        style: Theme.of(context).textTheme.titleMedium,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Amount Given',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          Row(
+                            children: [
+                              Text(
+                                'BGN',
+                                style: TextStyle(
+                                  color: !_getAmountGivenCurrency()
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(context).colorScheme.onSurface
+                                            .withValues(alpha: 0.5),
+                                  fontWeight: !_getAmountGivenCurrency()
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              Switch(
+                                value: _getAmountGivenCurrency(),
+                                onChanged: (value) {
+                                  setState(() {
+                                    _amountGivenCurrencyOverride = value;
+                                  });
+                                },
+                              ),
+                              Text(
+                                'EUR',
+                                style: TextStyle(
+                                  color: _getAmountGivenCurrency()
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(context).colorScheme.onSurface
+                                            .withValues(alpha: 0.5),
+                                  fontWeight: _getAmountGivenCurrency()
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 8.0),
                       TextField(
@@ -201,7 +370,7 @@ class _ConverterScreenState extends State<ConverterScreen> {
                         ],
                         decoration: InputDecoration(
                           hintText: 'Enter amount given',
-                          suffixText: _isEurSelected ? 'EUR' : 'BGN',
+                          suffixText: _getAmountGivenCurrency() ? 'EUR' : 'BGN',
                           border: const OutlineInputBorder(),
                         ),
                       ),
@@ -211,60 +380,38 @@ class _ConverterScreenState extends State<ConverterScreen> {
               ),
               const SizedBox(height: 16.0),
 
-              // Results Card
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Results',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16.0),
-
-                      // Total in other currency
-                      _buildResultRow(
-                        context,
-                        'Total Amount in ${_isEurSelected ? 'BGN' : 'EUR'}',
-                        _formatCurrency(totalInOtherCurrency),
-                        _isEurSelected ? 'BGN' : 'EUR',
-                      ),
-                      const SizedBox(height: 12.0),
-
-                      const Divider(),
-                      const SizedBox(height: 12.0),
-
-                      // Change in selected currency
-                      _buildResultRow(
-                        context,
-                        'Change in ${_isEurSelected ? 'EUR' : 'BGN'}',
-                        _formatCurrency(changeInSelectedCurrency),
-                        _isEurSelected ? 'EUR' : 'BGN',
-                        isChange: true,
-                      ),
-                      const SizedBox(height: 12.0),
-
-                      // Change in other currency
-                      _buildResultRow(
-                        context,
-                        'Change in ${_isEurSelected ? 'BGN' : 'EUR'}',
-                        _formatCurrency(changeInOtherCurrency),
-                        _isEurSelected ? 'BGN' : 'EUR',
-                        isChange: true,
-                      ),
-                    ],
-                  ),
-                ),
+              // Results Card - extracted to separate widget for performance
+              _ResultsCard(
+                totalInOtherCurrency: totalInOtherCurrency,
+                changeInEur: changeInEur,
+                changeInBgn: changeInBgn,
+                totalAmountCurrencyIsEur: totalAmountCurrencyIsEur,
               ),
             ],
           ),
         ),
       ),
     );
+  }
+}
+
+/// Separate widget for results card to minimize rebuilds
+class _ResultsCard extends StatelessWidget {
+  const _ResultsCard({
+    required this.totalInOtherCurrency,
+    required this.changeInEur,
+    required this.changeInBgn,
+    required this.totalAmountCurrencyIsEur,
+  });
+
+  final double? totalInOtherCurrency;
+  final double? changeInEur;
+  final double? changeInBgn;
+  final bool totalAmountCurrencyIsEur;
+
+  String _formatCurrency(double? value) {
+    if (value == null) return '0.00';
+    return value.toStringAsFixed(2);
   }
 
   Widget _buildResultRow(
@@ -301,6 +448,58 @@ class _ConverterScreenState extends State<ConverterScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Results',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16.0),
+
+            // Total in other currency
+            _buildResultRow(
+              context,
+              'Total Amount in ${totalAmountCurrencyIsEur ? 'BGN' : 'EUR'}',
+              _formatCurrency(totalInOtherCurrency),
+              totalAmountCurrencyIsEur ? 'BGN' : 'EUR',
+            ),
+            const SizedBox(height: 12.0),
+
+            const Divider(),
+            const SizedBox(height: 12.0),
+
+            // Change in EUR (always shown)
+            _buildResultRow(
+              context,
+              'Change in EUR',
+              _formatCurrency(changeInEur),
+              'EUR',
+              isChange: true,
+            ),
+            const SizedBox(height: 12.0),
+
+            // Change in BGN (always shown)
+            _buildResultRow(
+              context,
+              'Change in BGN',
+              _formatCurrency(changeInBgn),
+              'BGN',
+              isChange: true,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
