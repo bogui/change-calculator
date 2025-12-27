@@ -5,6 +5,12 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+dependencies {
+    // ...
+    implementation("com.google.android.material:material:1.13.0")
+    // ...
+}
+
 android {
     namespace = "com.example.euro_converter"
     compileSdk = flutter.compileSdkVersion
