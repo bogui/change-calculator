@@ -169,13 +169,18 @@ class _ConverterScreenState extends State<ConverterScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Working Currency',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      Text(
-                        '1.95583 BGN/EUR',
-                        style: Theme.of(context).textTheme.bodySmall,
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Working Currency',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          Text(
+                            '1.95583 BGN/EUR',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
                       ),
                       Row(
                         children: [
