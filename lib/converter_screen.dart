@@ -197,30 +197,34 @@ class _ConverterScreenState extends State<ConverterScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Официален Курс',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          Text(
-                            '1.95583 лв./€',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ],
-                      ),
-                      Column(
-                        children: [
-                          SingleChoiceButton(
-                            selected: _calculationType,
-                            onSelectionChanged: (CalculationType value) {
-                              setState(() {
-                                _calculationType = value;
-                              });
-                            },
-                          ),
-                        ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Официален Курс',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  '1.95583 лв./€',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                                SingleChoiceButton(
+                                  selected: _calculationType,
+                                  onSelectionChanged: (CalculationType value) {
+                                    setState(() {
+                                      _calculationType = value;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -378,9 +382,7 @@ class _ConverterScreenState extends State<ConverterScreen> {
                           ],
                           decoration: InputDecoration(
                             hintText: 'Въведи сума',
-                            suffixText: _getAmountGivenCurrency()
-                                ? '€'
-                                : 'лв.',
+                            suffixText: _getAmountGivenCurrency() ? '€' : 'лв.',
                             border: const OutlineInputBorder(),
                           ),
                         ),

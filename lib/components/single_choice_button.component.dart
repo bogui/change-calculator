@@ -11,8 +11,8 @@ class SingleChoiceButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SegmentedButton<CalculationType>(segments: const <ButtonSegment<CalculationType>>[
-      ButtonSegment<CalculationType>(value: CalculationType.single, icon: Icon(Icons.done), tooltip: 'Калкулация с една валута'),
-      ButtonSegment<CalculationType>(value: CalculationType.double, icon: Icon(Icons.done_all), tooltip: 'Калкулация с две валути'),
+      ButtonSegment<CalculationType>(value: CalculationType.single, label: Text('1 валута'), tooltip: 'Калкулация с една валута'),
+      ButtonSegment<CalculationType>(value: CalculationType.double, label: Text('2 валути'), tooltip: 'Калкулация с две валути'),
     ],  onSelectionChanged: (Set<CalculationType> newSelection) {
       onSelectionChanged(newSelection.first);
     }, selected: <CalculationType>{selected});
