@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:euro_converter/components/single_choice_button.component.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -15,9 +16,12 @@ class ConverterScreen extends StatefulWidget {
 class _ConverterScreenState extends State<ConverterScreen> {
   final TextEditingController _totalAmountController = TextEditingController();
   final TextEditingController _amountGivenController = TextEditingController();
+  final TextEditingController _amountGivenEurController =
+      TextEditingController();
+  final TextEditingController _amountGivenBgnController =
+      TextEditingController();
 
-  /// Main working currency: true = EUR, false = BGN
-  bool _mainCurrencyIsEur = true;
+  CalculationType _calculationType = CalculationType.single;
 
   /// Override flags: null = use main currency, true = EUR, false = BGN
   bool? _totalAmountCurrencyOverride;
@@ -30,6 +34,8 @@ class _ConverterScreenState extends State<ConverterScreen> {
     super.initState();
     _totalAmountController.addListener(_debouncedUpdate);
     _amountGivenController.addListener(_debouncedUpdate);
+    _amountGivenEurController.addListener(_debouncedUpdate);
+    _amountGivenBgnController.addListener(_debouncedUpdate);
   }
 
   @override
@@ -37,8 +43,12 @@ class _ConverterScreenState extends State<ConverterScreen> {
     _debounceTimer?.cancel();
     _totalAmountController.removeListener(_debouncedUpdate);
     _amountGivenController.removeListener(_debouncedUpdate);
+    _amountGivenEurController.removeListener(_debouncedUpdate);
+    _amountGivenBgnController.removeListener(_debouncedUpdate);
     _totalAmountController.dispose();
     _amountGivenController.dispose();
+    _amountGivenEurController.dispose();
+    _amountGivenBgnController.dispose();
     super.dispose();
   }
 
@@ -57,32 +67,33 @@ class _ConverterScreenState extends State<ConverterScreen> {
   bool _hasValuesToClear() {
     final hasText =
         _totalAmountController.text.isNotEmpty ||
-        _amountGivenController.text.isNotEmpty;
+        _amountGivenController.text.isNotEmpty ||
+        _amountGivenEurController.text.isNotEmpty ||
+        _amountGivenBgnController.text.isNotEmpty;
     final hasOverrides =
         _totalAmountCurrencyOverride != null ||
         _amountGivenCurrencyOverride != null;
-    final isNotDefaultCurrency = !_mainCurrencyIsEur;
-    return hasText || hasOverrides || isNotDefaultCurrency;
+
+    return hasText || hasOverrides;
   }
 
   /// Resets all fields to their default values
   void _resetAllFields() {
     _totalAmountController.clear();
     _amountGivenController.clear();
+    _amountGivenEurController.clear();
+    _amountGivenBgnController.clear();
     setState(() {
-      _mainCurrencyIsEur = true;
       _totalAmountCurrencyOverride = null;
       _amountGivenCurrencyOverride = null;
     });
   }
 
   /// Gets the effective currency for total amount field
-  bool _getTotalAmountCurrency() =>
-      _totalAmountCurrencyOverride ?? _mainCurrencyIsEur;
+  bool _getTotalAmountCurrency() => _totalAmountCurrencyOverride ?? true;
 
   /// Gets the effective currency for amount given field
-  bool _getAmountGivenCurrency() =>
-      _amountGivenCurrencyOverride ?? _mainCurrencyIsEur;
+  bool _getAmountGivenCurrency() => _amountGivenCurrencyOverride ?? true;
 
   /// Converts EUR to BGN
   double _convertEurToBgn(double eur) => eur * _exchangeRate;
@@ -100,10 +111,27 @@ class _ConverterScreenState extends State<ConverterScreen> {
   @override
   Widget build(BuildContext context) {
     final totalAmount = _parseAmount(_totalAmountController.text);
-    final amountGiven = _parseAmount(_amountGivenController.text);
-
     final totalAmountCurrencyIsEur = _getTotalAmountCurrency();
-    final amountGivenCurrencyIsEur = _getAmountGivenCurrency();
+
+    double? amountGiven;
+    bool amountGivenCurrencyIsEur;
+
+    if (_calculationType == CalculationType.single) {
+      amountGiven = _parseAmount(_amountGivenController.text) ?? 0.0;
+      amountGivenCurrencyIsEur = _getAmountGivenCurrency();
+    } else {
+      final amountGivenEur =
+          _parseAmount(_amountGivenEurController.text) ?? 0.0;
+      final amountGivenBgn =
+          _parseAmount(_amountGivenBgnController.text) ?? 0.0;
+
+      amountGiven = amountGivenEur + _convertBgnToEur(amountGivenBgn);
+      amountGivenCurrencyIsEur = true;
+
+      if (amountGiven == 0.0) {
+        amountGiven = null;
+      }
+    }
 
     // Calculate total amount in other currency
     double? totalInOtherCurrency;
@@ -146,12 +174,12 @@ class _ConverterScreenState extends State<ConverterScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('EUR-BGN Converter'),
+        title: const Text('Ресто калкулатор (лв. / €)'),
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.clear_all),
-            tooltip: 'Clear all fields',
+            icon: const Icon(Icons.cleaning_services_rounded),
+            tooltip: 'Изчисти всички полета',
             onPressed: _hasValuesToClear() ? _resetAllFields : null,
           ),
         ],
@@ -173,55 +201,24 @@ class _ConverterScreenState extends State<ConverterScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Working Currency',
+                            'Официален Курс',
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                           Text(
-                            '1.95583 BGN/EUR',
+                            '1.95583 лв./€',
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
                       ),
-                      Row(
+                      Column(
                         children: [
-                          Text(
-                            'BGN',
-                            style: TextStyle(
-                              color: !_mainCurrencyIsEur
-                                  ? Theme.of(context).colorScheme.primary
-                                  : Theme.of(context).colorScheme.onSurface
-                                        .withValues(alpha: 0.5),
-                              fontWeight: !_mainCurrencyIsEur
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                          Switch(
-                            value: _mainCurrencyIsEur,
-                            onChanged: (value) {
+                          SingleChoiceButton(
+                            selected: _calculationType,
+                            onSelectionChanged: (CalculationType value) {
                               setState(() {
-                                _mainCurrencyIsEur = value;
-                                // Reset overrides if they match the new main currency (no override needed)
-                                if (_totalAmountCurrencyOverride == value) {
-                                  _totalAmountCurrencyOverride = null;
-                                }
-                                if (_amountGivenCurrencyOverride == value) {
-                                  _amountGivenCurrencyOverride = null;
-                                }
+                                _calculationType = value;
                               });
                             },
-                          ),
-                          Text(
-                            'EUR',
-                            style: TextStyle(
-                              color: _mainCurrencyIsEur
-                                  ? Theme.of(context).colorScheme.primary
-                                  : Theme.of(context).colorScheme.onSurface
-                                        .withValues(alpha: 0.5),
-                              fontWeight: _mainCurrencyIsEur
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                            ),
                           ),
                         ],
                       ),
@@ -242,13 +239,13 @@ class _ConverterScreenState extends State<ConverterScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Total Amount',
+                            'Сума',
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                           Row(
                             children: [
                               Text(
-                                'BGN',
+                                'лв.',
                                 style: TextStyle(
                                   color: !_getTotalAmountCurrency()
                                       ? Theme.of(context).colorScheme.primary
@@ -269,7 +266,7 @@ class _ConverterScreenState extends State<ConverterScreen> {
                                 },
                               ),
                               Text(
-                                'EUR',
+                                '€',
                                 style: TextStyle(
                                   color: _getTotalAmountCurrency()
                                       ? Theme.of(context).colorScheme.primary
@@ -297,8 +294,9 @@ class _ConverterScreenState extends State<ConverterScreen> {
                           ),
                         ],
                         decoration: InputDecoration(
-                          hintText: 'Enter total amount',
-                          suffixText: _getTotalAmountCurrency() ? 'EUR' : 'BGN',
+                          label: Text('Сума общо'),
+                          hintText: 'Въведи тотал',
+                          suffixText: _getTotalAmountCurrency() ? '€' : 'лв.',
                           border: const OutlineInputBorder(),
                         ),
                       ),
@@ -308,81 +306,140 @@ class _ConverterScreenState extends State<ConverterScreen> {
               ),
               const SizedBox(height: 16.0),
 
-              // Amount Given Input Card
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Amount Given',
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          Row(
-                            children: [
-                              Text(
-                                'BGN',
-                                style: TextStyle(
-                                  color: !_getAmountGivenCurrency()
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(context).colorScheme.onSurface
-                                            .withValues(alpha: 0.5),
-                                  fontWeight: !_getAmountGivenCurrency()
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                  fontSize: 12,
+              if (_calculationType == CalculationType.single)
+                // Amount Given Input Card (single)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Платена сума',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                            Row(
+                              children: [
+                                Text(
+                                  'лв.',
+                                  style: TextStyle(
+                                    color: !_getAmountGivenCurrency()
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withValues(alpha: 0.5),
+                                    fontWeight: !_getAmountGivenCurrency()
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                    fontSize: 12,
+                                  ),
                                 ),
-                              ),
-                              Switch(
-                                value: _getAmountGivenCurrency(),
-                                onChanged: (value) {
-                                  setState(() {
-                                    _amountGivenCurrencyOverride = value;
-                                  });
-                                },
-                              ),
-                              Text(
-                                'EUR',
-                                style: TextStyle(
-                                  color: _getAmountGivenCurrency()
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(context).colorScheme.onSurface
-                                            .withValues(alpha: 0.5),
-                                  fontWeight: _getAmountGivenCurrency()
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                  fontSize: 12,
+                                Switch(
+                                  value: _getAmountGivenCurrency(),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _amountGivenCurrencyOverride = value;
+                                    });
+                                  },
                                 ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8.0),
-                      TextField(
-                        controller: _amountGivenController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
+                                Text(
+                                  '€',
+                                  style: TextStyle(
+                                    color: _getAmountGivenCurrency()
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withValues(alpha: 0.5),
+                                    fontWeight: _getAmountGivenCurrency()
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.allow(
-                            RegExp(r'^\d+\.?\d{0,2}'),
+                        const SizedBox(height: 8.0),
+                        TextField(
+                          controller: _amountGivenController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
                           ),
-                        ],
-                        decoration: InputDecoration(
-                          hintText: 'Enter amount given',
-                          suffixText: _getAmountGivenCurrency() ? 'EUR' : 'BGN',
-                          border: const OutlineInputBorder(),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'^\d+\.?\d{0,2}'),
+                            ),
+                          ],
+                          decoration: InputDecoration(
+                            hintText: 'Въведи сума',
+                            suffixText: _getAmountGivenCurrency()
+                                ? '€'
+                                : 'лв.',
+                            border: const OutlineInputBorder(),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                  ),
+                )
+              else
+                // Amount Given Input Card (double)
+                Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Платена Сума (лв. + €)',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: _amountGivenBgnController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'^\d+\.?\d{0,2}'),
+                            ),
+                          ],
+                          decoration: const InputDecoration(
+                            labelText: 'Платено в лв.',
+                            hintText: '0.00',
+                            suffixText: 'лв.',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: _amountGivenEurController,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'^\d+\.?\d{0,2}'),
+                            ),
+                          ],
+                          decoration: const InputDecoration(
+                            labelText: 'Платено в €',
+                            hintText: '0.00',
+                            suffixText: '€',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
               const SizedBox(height: 16.0),
 
               // Results Card - extracted to separate widget for performance
@@ -465,7 +522,7 @@ class _ResultsCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Results',
+              'Резултат',
               style: Theme.of(
                 context,
               ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
@@ -475,9 +532,9 @@ class _ResultsCard extends StatelessWidget {
             // Total in other currency
             _buildResultRow(
               context,
-              'Total Amount in ${totalAmountCurrencyIsEur ? 'BGN' : 'EUR'}',
+              'Обща сума в ${totalAmountCurrencyIsEur ? 'лв.' : '€'}',
               _formatCurrency(totalInOtherCurrency),
-              totalAmountCurrencyIsEur ? 'BGN' : 'EUR',
+              totalAmountCurrencyIsEur ? 'лв.' : '€',
             ),
             const SizedBox(height: 12.0),
 
@@ -487,9 +544,9 @@ class _ResultsCard extends StatelessWidget {
             // Change in EUR (always shown)
             _buildResultRow(
               context,
-              'Change in EUR',
+              'Ресто в €',
               _formatCurrency(changeInEur),
-              'EUR',
+              '€',
               isChange: true,
             ),
             const SizedBox(height: 12.0),
@@ -497,9 +554,9 @@ class _ResultsCard extends StatelessWidget {
             // Change in BGN (always shown)
             _buildResultRow(
               context,
-              'Change in BGN',
+              'Ресто в лв.',
               _formatCurrency(changeInBgn),
-              'BGN',
+              'лв.',
               isChange: true,
             ),
           ],

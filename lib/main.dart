@@ -11,7 +11,8 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'EUR-BGN Converter',
+      debugShowCheckedModeBanner: false,
+      title: 'Ресто калкулатор (лв. / €)',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.blue,
